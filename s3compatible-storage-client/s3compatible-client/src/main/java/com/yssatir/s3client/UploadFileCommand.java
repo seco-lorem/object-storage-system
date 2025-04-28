@@ -1,0 +1,66 @@
+package com.yssatir.s3client;
+
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
+
+import picocli.CommandLine;
+
+import java.io.File;
+
+@CommandLine.Command(name = "upload-file", description = "Uploads a file to a given S3 bucket")
+public class UploadFileCommand implements Runnable {
+
+	private static DotenvGetter dotenvGetter = DotenvGetter.getInstance();
+    private static final String ACCESS_KEY = dotenvGetter.getAccessKey();
+	
+    @CommandLine.Option(names = {"-b", "--bucket"}, required = true, description = "Bucket name")
+    private String bucketName;
+
+    @CommandLine.Option(names = {"-f", "--file"}, required = true, description = "File path to upload")
+    private String filePath;
+
+    @CommandLine.Option(names = {"-k", "--key"}, required = true, description = "S3 object key")
+    private String objectKey;
+
+    @Override
+    public void run() {
+        AmazonS3 s3Client = S3Service.getClient();
+        File file = new File(filePath);
+
+        if (!file.exists()) {
+            System.err.println("File not found: " + filePath);
+            return;
+        }
+
+        // First calculate current bucket size
+        long projectedSize;
+        long fileSize = file.length();
+        try {
+	        ObjectListing listing = s3Client.listObjects(bucketName);
+	        long currentSize = 0;
+	        for (S3ObjectSummary summary : listing.getObjectSummaries()) {
+	            currentSize += summary.getSize();
+	        }
+	
+	        projectedSize = currentSize + fileSize;
+        } catch (Exception e) {
+            System.err.println("Upload failed: " + e.getMessage());
+            return;
+        }
+
+        boolean allowed = OpaPolicyClient.checkPolicy(ACCESS_KEY, "upload", bucketName, true, projectedSize);
+        if (!allowed) {
+            System.out.println("Upload denied by policy.");
+            return;
+        }
+
+        try {
+            s3Client.putObject(new PutObjectRequest(bucketName, objectKey, file));
+            System.out.println("File uploaded as: " + objectKey);
+        } catch (Exception e) {
+            System.err.println("Upload failed: " + e.getMessage());
+        }
+    }
+}

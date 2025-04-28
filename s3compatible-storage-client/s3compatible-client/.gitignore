@@ -1,0 +1,29 @@
+# Maven target directory
+/target/
+
+# Eclipse project files
+.classpath
+.project
+.settings/
+
+# IntelliJ IDEA (just in case)
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*~
+*.swp
+*.swo
+
+# Generated JARs
+*.jar
+
+# Local environment settings
+.env

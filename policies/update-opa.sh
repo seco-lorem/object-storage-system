@@ -1,0 +1,1 @@
+curl -X PUT --data-binary @policy.rego localhost:8181/v1/policies/minio-authz
