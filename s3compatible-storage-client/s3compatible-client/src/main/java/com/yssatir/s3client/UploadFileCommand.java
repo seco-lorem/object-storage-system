@@ -23,41 +23,53 @@ public class UploadFileCommand implements Runnable {
 
     @CommandLine.Option(names = {"-k", "--key"}, required = true, description = "S3 object key")
     private String objectKey;
+    
+    private long calculateProjectedSize(AmazonS3 s3, long fileSize) {
+
+        ObjectListing listing = s3.listObjects(bucketName);
+        long currentSize = 0;
+        for (S3ObjectSummary summary : listing.getObjectSummaries()) {
+            currentSize += summary.getSize();
+        }
+
+        return currentSize + fileSize;
+        
+    }
+    
+    private boolean checkPolicy(File file, AmazonS3 s3) {
+    	// Calculate current bucket size
+        long projectedSize;
+        long fileSize = file.length();
+        try {
+	        projectedSize = calculateProjectedSize(s3, fileSize);
+        } catch (Exception e) {
+            System.err.println("Error calculating projected size: " + e.getMessage());
+            return false;
+        }
+
+        // Check Policy
+        return OpaPolicyClient.checkPolicy(ACCESS_KEY, "upload", bucketName, true, projectedSize);
+        
+    }
 
     @Override
     public void run() {
-        AmazonS3 s3Client = S3Service.getClient();
+        AmazonS3 s3 = S3Service.getClient();
         File file = new File(filePath);
+        
+        if (!checkPolicy(file, s3)) {
+            System.out.println("Upload denied by policy.");
+        	return;
+        }
 
         if (!file.exists()) {
             System.err.println("File not found: " + filePath);
             return;
         }
 
-        // First calculate current bucket size
-        long projectedSize;
-        long fileSize = file.length();
+        
         try {
-	        ObjectListing listing = s3Client.listObjects(bucketName);
-	        long currentSize = 0;
-	        for (S3ObjectSummary summary : listing.getObjectSummaries()) {
-	            currentSize += summary.getSize();
-	        }
-	
-	        projectedSize = currentSize + fileSize;
-        } catch (Exception e) {
-            System.err.println("Upload failed: " + e.getMessage());
-            return;
-        }
-
-        boolean allowed = OpaPolicyClient.checkPolicy(ACCESS_KEY, "upload", bucketName, true, projectedSize);
-        if (!allowed) {
-            System.out.println("Upload denied by policy.");
-            return;
-        }
-
-        try {
-            s3Client.putObject(new PutObjectRequest(bucketName, objectKey, file));
+            s3.putObject(new PutObjectRequest(bucketName, objectKey, file));
             System.out.println("File uploaded as: " + objectKey);
         } catch (Exception e) {
             System.err.println("Upload failed: " + e.getMessage());
