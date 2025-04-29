@@ -1,9 +1,14 @@
 package com.yssatir.s3client;
 
+import com.amazonaws.AmazonClientException;
+import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.services.s3.transfer.TransferManager;
+import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
+import com.amazonaws.services.s3.transfer.Upload;
 
 import picocli.CommandLine;
 
@@ -51,6 +56,22 @@ public class UploadFileCommand implements Runnable {
         return OpaPolicyClient.checkPolicy(ACCESS_KEY, "upload", bucketName, true, projectedSize);
         
     }
+    
+    private void uploadFile(AmazonS3 s3, File file) throws AmazonServiceException, AmazonClientException, InterruptedException {
+    	// What ChatGPT generated was perfectly fine. I only had to read it properly, then writing myself was quite easy
+        TransferManager transferManager = TransferManagerBuilder.standard()
+            .withS3Client(s3)
+            .build();
+        PutObjectRequest request = new PutObjectRequest(bucketName, objectKey, file);
+        
+        request.setGeneralProgressListener( new UploadProgressBarPrinter(file.length()));
+
+        Upload upload = transferManager.upload(request);
+        upload.waitForCompletion();
+        System.out.println("\nFile uploaded as: " + objectKey);
+
+        transferManager.shutdownNow();
+    }
 
     @Override
     public void run() {
@@ -69,8 +90,7 @@ public class UploadFileCommand implements Runnable {
 
         
         try {
-            s3.putObject(new PutObjectRequest(bucketName, objectKey, file));
-            System.out.println("File uploaded as: " + objectKey);
+        	uploadFile(s3, file);
         } catch (Exception e) {
             System.err.println("Upload failed: " + e.getMessage());
         }
